@@ -72,17 +72,17 @@ const isRequestOverflowFailure = (failure: unknown) =>
  * Proxies and gateways often reject oversized bodies with an unclassified 4xx instead of a size
  * signal, while media counts flat toward tokens and dominates bytes. An unclassified client
  * rejection against a huge request is most likely size-caused, so it recovers like a payload
- * rejection. Genuine client bugs stay untouched: small requests never qualify.
+ * rejection. Genuine client bugs stay untouched: small requests never qualify. Only thrown
+ * failures carry HTTP status, so streamed provider errors are left to the classified paths.
  */
 const isOversizedRejection = (failure: unknown, requestBytes: number) =>
   requestBytes >= OVERSIZED_REQUEST_BYTES &&
-  ((failure instanceof AIError &&
-    failure.reason._tag === "InvalidRequest" &&
-    failure.reason.classification === undefined &&
-    failure.reason.http !== undefined &&
-    failure.reason.http.status >= 400 &&
-    failure.reason.http.status < 500) ||
-    (LLMEvent.is.providerError(failure) && failure.classification === undefined))
+  failure instanceof AIError &&
+  failure.reason._tag === "InvalidRequest" &&
+  failure.reason.classification === undefined &&
+  failure.reason.http !== undefined &&
+  failure.reason.http.status >= 400 &&
+  failure.reason.http.status < 500
 
 /** Captures Location-scoped dependencies without introducing another service or execution loop. */
 export const make = Effect.gen(function* () {

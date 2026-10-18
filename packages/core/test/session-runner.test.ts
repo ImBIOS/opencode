@@ -3350,6 +3350,26 @@ const oversizedImageUri = () => {
     expect(yield* s.context).not.toContainEqual(expect.objectContaining({ type: "compaction" }))
   }, 30_000)
 
+  scenario("does not recover a streamed unclassified error for an oversized request", function* (s) {
+    yield* setupOverflowRecovery(s)
+    yield* s.session.prompt({
+      sessionID,
+      text: "Inspect the screenshot",
+      files: [{ uri: oversizedImageUri() }],
+      resume: false,
+    })
+    // Streamed provider errors carry no HTTP status, so the size gate cannot tell them
+    // apart from server-side failures: they must not trigger compaction.
+    yield* s.llm.push([
+      LLMEvent.providerError({ message: "The request contains invalid parameters. Check the request body for any errors or inconsistencies." }),
+    ])
+    expect((yield* s.runPrompt("Continue").pipe(Effect.flip)).message).toBe(
+      "The request contains invalid parameters. Check the request body for any errors or inconsistencies.",
+    )
+    expect(s.requests).toHaveLength(1)
+    expect(yield* s.context).not.toContainEqual(expect.objectContaining({ type: "compaction" }))
+  }, 30_000)
+
   scenario("refreshes preparation after overflow compaction without promoting new input", function* (s) {
     yield* setupOverflowRecovery(s)
 
