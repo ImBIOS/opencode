@@ -471,10 +471,12 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                   hidden: true,
                   onSelect: openNewTab,
                 },
-                // The app menu looks up `session.new` and disables entries with
-                // no registered option. Session scope owns the visible command;
-                // this hidden copy keeps the menu enabled on Home and
-                // new-session routes, where no session commands are mounted.
+                // Single owner of `session.new`: the app menu disables ids with
+                // no registered option, and session scope only mounts inside
+                // sessions, which greyed the item on Home and new-session
+                // pages. The titlebar mounts on every route, so one visible
+                // registration here covers all of them with no mount-order
+                // dependence.
                 // https://github.com/anomalyco/opencode/issues/58188
                 {
                   id: "session.new",
@@ -482,7 +484,6 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                   title: language.t("command.session.new"),
                   keybind: "mod+shift+s",
                   slash: "new",
-                  hidden: true,
                   onSelect: () => command.trigger("tab.new"),
                 },
                 current && {
