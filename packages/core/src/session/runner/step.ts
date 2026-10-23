@@ -68,32 +68,23 @@ const RESULT_MISSING = { type: "tool.result-missing", message: "Provider did not
 const isRequestOverflowFailure = (failure: unknown) =>
   isContextOverflowFailure(failure) || isPayloadTooLargeFailure(failure)
 
-// 400s that name a concrete client bug must never trigger size recovery, even on
-// huge requests: corrupt attachments (#53014), bad tool schemas, unsupported
-// params. The #54690 gateway returns a generic message with null code, so only
-// generic rejections qualify.
-const NON_SIZE_REJECTION_PATTERNS = [
-  /corrupt/i,
-  /badly formatted/i,
-  /media[- ]?rejected/i,
-  /invalid (?:tool|function|arguments?|schema)/i,
-  /missing (?:key|parameter|argument|required)/i,
-  /validation (?:error|failed)/i,
-  /unsupported/i,
-  /unknown (?:tool|model|parameter|param)/i,
-  /content[- ]?policy|violating our usage policy|safety system/i,
-  /incorrect api key|permission_denied|permission_error|api_key_invalid/i,
-  /rate[-_\s]?limit|too[_\s]?many[_\s]?requests|throttl/i,
-  /server[-_\s]?error|overloaded|temporarily unavailable|try again/i,
+// The #54690 gateway family rejects oversized bodies with a generic HTTP 400
+// (`invalid_request_error`, null code) carrying no size signal, so
+// `classifyProviderFailure` correctly leaves it unclassified: classification
+// sees the message but not the request bytes. Only these known-generic
+// gateway wordings qualify, and only against a huge request (see below).
+const OVERSIZED_GATEWAY_MESSAGE_PATTERNS = [
+  /the request contains invalid parameters/i,
 ]
 
 /**
  * Proxies and gateways often reject oversized bodies with an unclassified 4xx instead of a size
- * signal, while media counts flat toward tokens and dominates bytes. An unclassified, generic
- * client rejection against a huge request is most likely size-caused, so it recovers like a
- * payload rejection. Named client bugs (corrupt file, bad tool schema, unsupported param) and
- * small requests never qualify. Only thrown failures carry HTTP status, so streamed provider
- * errors are left to the classified paths.
+ * signal, while media counts flat toward tokens and dominates bytes. A rejection carrying one
+ * of the known-generic gateway wordings against a huge request is most likely size-caused, so
+ * it recovers like a payload rejection. Anything naming a concrete bug (corrupt file, bad tool
+ * schema, unsupported param), any classified failure, and all small requests never qualify.
+ * Only thrown failures carry HTTP status, so streamed provider errors are left to the
+ * classified paths.
  */
 const isOversizedRejection = (failure: unknown, requestBytes: number) => {
   if (requestBytes < OVERSIZED_REQUEST_BYTES) return false
@@ -102,7 +93,7 @@ const isOversizedRejection = (failure: unknown, requestBytes: number) => {
   const http = failure.reason.http
   if (http === undefined || http.status < 400 || http.status >= 500) return false
   const text = [failure.reason.message, failure.reason.body ?? ""].join("\n")
-  return !NON_SIZE_REJECTION_PATTERNS.some((pattern) => pattern.test(text))
+  return OVERSIZED_GATEWAY_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
 }
 
 /** Captures Location-scoped dependencies without introducing another service or execution loop. */

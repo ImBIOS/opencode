@@ -1157,8 +1157,11 @@ const estimateRequest = (request: Pick<LLMRequest, "system" | "tools" | "message
 
 // Gateways and proxies reject oversized HTTP bodies (often with a generic 400 rather than a
 // classified size error) long before token windows fill, and media counts flat toward tokens
-// while dominating bytes. Requests at or above this size that fail with an unclassified client
-// rejection are treated as payload rejections and recover through text-only compaction.
+// while dominating bytes. Requests at or above this size that fail with an unclassified,
+// known-generic gateway rejection are treated as payload rejections and recover through
+// text-only compaction. The estimate covers only provider-visible fields, so it understates
+// the wire body and the gate under- rather than over-triggers; gateway limits vary, so the
+// 4 MiB floor stays well above ordinary requests while the single-rebuild limit bounds harm.
 export const OVERSIZED_REQUEST_BYTES = 4 * 1024 * 1024 // 4 MiB
 
 /** Serialized request size in bytes; 0 when the request cannot be serialized. */

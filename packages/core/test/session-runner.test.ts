@@ -3444,7 +3444,7 @@ const oversizedImageUri = () => {
     expect(yield* s.context).not.toContainEqual(expect.objectContaining({ type: "compaction" }))
   }, 30_000)
 
-  scenario("does not recover a named client bug on an oversized request", function* (s) {
+  scenario("does not recover a non-gateway 400 on an oversized request", function* (s) {
     yield* setupOverflowRecovery(s)
     yield* s.session.prompt({
       sessionID,
@@ -3452,8 +3452,9 @@ const oversizedImageUri = () => {
       files: [{ uri: oversizedImageUri() }],
       resume: false,
     })
-    // Corrupt attachments (#53014) and bad tool schemas name the bug: size
-    // recovery must not silently summarize the session for those.
+    // Only the known-generic gateway wordings qualify: 400s naming a concrete
+    // bug (corrupt attachment in #53014, bad tool schema) never compact, even
+    // when the request itself is oversized.
     for (const message of [
       "The file you uploaded is badly formatted or corrupted.",
       'Invalid arguments for tool "shell": command: Missing key',
