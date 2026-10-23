@@ -3444,6 +3444,35 @@ const oversizedImageUri = () => {
     expect(yield* s.context).not.toContainEqual(expect.objectContaining({ type: "compaction" }))
   }, 30_000)
 
+  scenario("does not recover a named client bug on an oversized request", function* (s) {
+    yield* setupOverflowRecovery(s)
+    yield* s.session.prompt({
+      sessionID,
+      text: "Inspect the screenshot",
+      files: [{ uri: oversizedImageUri() }],
+      resume: false,
+    })
+    // Corrupt attachments (#53014) and bad tool schemas name the bug: size
+    // recovery must not silently summarize the session for those.
+    for (const message of [
+      "The file you uploaded is badly formatted or corrupted.",
+      'Invalid arguments for tool "shell": command: Missing key',
+    ]) {
+      yield* s.llm.push(
+        Stream.fail(
+          new AIError({
+            reason: new InvalidRequestError({
+              message,
+              http: new HttpContext({ url: "https://gateway.example/v1/responses", status: 400, headers: {} }),
+            }),
+          }),
+        ),
+      )
+      expect((yield* s.runPrompt("Continue").pipe(Effect.flip)).message).toBe(message)
+      expect(yield* s.context).not.toContainEqual(expect.objectContaining({ type: "compaction" }))
+    }
+  }, 30_000)
+
   scenario("refreshes preparation after overflow compaction without promoting new input", function* (s) {
     yield* setupOverflowRecovery(s)
 

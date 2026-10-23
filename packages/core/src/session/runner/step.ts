@@ -68,21 +68,42 @@ const RESULT_MISSING = { type: "tool.result-missing", message: "Provider did not
 const isRequestOverflowFailure = (failure: unknown) =>
   isContextOverflowFailure(failure) || isPayloadTooLargeFailure(failure)
 
+// 400s that name a concrete client bug must never trigger size recovery, even on
+// huge requests: corrupt attachments (#53014), bad tool schemas, unsupported
+// params. The #54690 gateway returns a generic message with null code, so only
+// generic rejections qualify.
+const NON_SIZE_REJECTION_PATTERNS = [
+  /corrupt/i,
+  /badly formatted/i,
+  /media[- ]?rejected/i,
+  /invalid (?:tool|function|arguments?|schema)/i,
+  /missing (?:key|parameter|argument|required)/i,
+  /validation (?:error|failed)/i,
+  /unsupported/i,
+  /unknown (?:tool|model|parameter|param)/i,
+  /content[- ]?policy|violating our usage policy|safety system/i,
+  /incorrect api key|permission_denied|permission_error|api_key_invalid/i,
+  /rate[-_\s]?limit|too[_\s]?many[_\s]?requests|throttl/i,
+  /server[-_\s]?error|overloaded|temporarily unavailable|try again/i,
+]
+
 /**
  * Proxies and gateways often reject oversized bodies with an unclassified 4xx instead of a size
- * signal, while media counts flat toward tokens and dominates bytes. An unclassified client
- * rejection against a huge request is most likely size-caused, so it recovers like a payload
- * rejection. Genuine client bugs stay untouched: small requests never qualify. Only thrown
- * failures carry HTTP status, so streamed provider errors are left to the classified paths.
+ * signal, while media counts flat toward tokens and dominates bytes. An unclassified, generic
+ * client rejection against a huge request is most likely size-caused, so it recovers like a
+ * payload rejection. Named client bugs (corrupt file, bad tool schema, unsupported param) and
+ * small requests never qualify. Only thrown failures carry HTTP status, so streamed provider
+ * errors are left to the classified paths.
  */
-const isOversizedRejection = (failure: unknown, requestBytes: number) =>
-  requestBytes >= OVERSIZED_REQUEST_BYTES &&
-  failure instanceof AIError &&
-  failure.reason._tag === "InvalidRequest" &&
-  failure.reason.classification === undefined &&
-  failure.reason.http !== undefined &&
-  failure.reason.http.status >= 400 &&
-  failure.reason.http.status < 500
+const isOversizedRejection = (failure: unknown, requestBytes: number) => {
+  if (requestBytes < OVERSIZED_REQUEST_BYTES) return false
+  if (!(failure instanceof AIError)) return false
+  if (failure.reason._tag !== "InvalidRequest" || failure.reason.classification !== undefined) return false
+  const http = failure.reason.http
+  if (http === undefined || http.status < 400 || http.status >= 500) return false
+  const text = [failure.reason.message, failure.reason.body ?? ""].join("\n")
+  return !NON_SIZE_REJECTION_PATTERNS.some((pattern) => pattern.test(text))
+}
 
 /** Captures Location-scoped dependencies without introducing another service or execution loop. */
 export const make = Effect.gen(function* () {
@@ -135,7 +156,7 @@ export const make = Effect.gen(function* () {
           if (!publisher.hasStarted()) yield* Fiber.join(pendingStartSnapshot)
           if (
             LLMEvent.is.providerError(event) &&
-            (isRequestOverflowFailure(event) || isOversizedRejection(event, requestBytes())) &&
+            isRequestOverflowFailure(event) &&
             !publisher.record().outputStarted
           ) {
             overflowFailure = event
