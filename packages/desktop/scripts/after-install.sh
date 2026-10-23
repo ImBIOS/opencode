@@ -4,17 +4,18 @@
 # sandbox helper is unconditionally setuid-root.
 #
 # The default template keeps 0755 whenever `unshare --user true` succeeds, but
-# that probe runs unconfined in dpkg while the app itself may run under an
-# AppArmor profile that denies unprivileged user namespaces (Ubuntu 24+). The
-# main process then gains NoNewPrivs from the userns fallback, every child
-# inherits it, pkexec can never elevate, and in-app updates fail with
-# `pkexec must be setuid root` (exit 127).
+# that probe runs unconfined inside dpkg while the installed app may have no
+# working user-namespace path: the bundled profile (which allows userns) is
+# skipped on older AppArmor, `apparmor_restrict_unprivileged_userns` or the
+# launcher context can deny it, and the main process then gains NoNewPrivs.
+# Every child inherits the flag, pkexec can never elevate, and in-app updates
+# fail with `pkexec must be setuid root` (exit 127).
 # https://github.com/anomalyco/opencode/issues/58157
 #
 # A root-owned 4755 helper is Chromium's designed setuid fallback and what
-# other Electron debs on affected systems ship, so forcing it is safe on
-# systems with and without working user namespaces. Re-diff against the
-# default template when upgrading electron-builder.
+# other Electron debs ship, so forcing it is safe on systems with and without
+# working user namespaces. Re-diff against the default template when upgrading
+# electron-builder.
 
 if type update-alternatives >/dev/null 2>&1; then
     # Remove previous link if it doesn't use update-alternatives
