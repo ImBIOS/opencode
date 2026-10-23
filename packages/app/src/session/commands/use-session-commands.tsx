@@ -322,9 +322,6 @@ export const useSessionCommands = (actions: SessionCommandContext) => {
   }
 
   const sessionCmds = () => [
-    // `session.new` lives in the titlebar `tabs` registration (single owner
-    // covering every route) so the app menu stays enabled outside sessions.
-    // https://github.com/anomalyco/opencode/issues/58188
     sessionCommand({
       id: "session.undo",
       title: language.t("command.session.undo"),
