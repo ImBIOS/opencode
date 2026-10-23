@@ -471,6 +471,20 @@ export function Titlebar(props: { verticalTabs?: { mount?: HTMLElement } }) {
                   hidden: true,
                   onSelect: openNewTab,
                 },
+                // The app menu looks up `session.new` and disables entries with
+                // no registered option. Session scope owns the visible command;
+                // this hidden copy keeps the menu enabled on Home and
+                // new-session routes, where no session commands are mounted.
+                // https://github.com/anomalyco/opencode/issues/58188
+                {
+                  id: "session.new",
+                  category: language.t("command.category.session"),
+                  title: language.t("command.session.new"),
+                  keybind: "mod+shift+s",
+                  slash: "new",
+                  hidden: true,
+                  onSelect: () => command.trigger("tab.new"),
+                },
                 current && {
                   id: "tab.close",
                   category: "tab",
